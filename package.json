@@ -1,0 +1,24 @@
+{
+  "name": "toptface",
+  "author": "Pavel Skoda",
+  "version": "1.0.0",
+  "keywords": ["pebble-app"],
+  "sdk": {
+    "version": "^4.9"
+  },
+  "pebble": {
+    "displayName": "toptface",
+    "uuid": "cd0fb816-9172-488a-8dd8-4969ed7f1e7f",
+    "sdkVersion": "3",
+    "projectType": "native",
+    "targetPlatforms": ["diorite"],
+    "watchapp": {
+      "watchface": true
+    },
+    "resources": {
+      "media": []
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
