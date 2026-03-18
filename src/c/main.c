@@ -7,7 +7,7 @@ static char s_time_buf[6]; // "HH:MM\0"
 
 static TextLayer *s_date_layer;
 static GFont s_font_date;
-static char s_date_buf[11]; // "DD.MM.YYYY\0"
+static char s_date_buf[9]; // "DD.MM.YY\0"
 
 static TextLayer *s_totp_layer;
 static GFont s_font_totp;
@@ -23,10 +23,10 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   static int last_mday = -1;
   if (tick_time->tm_mday != last_mday) {
     last_mday = tick_time->tm_mday;
-    snprintf(s_date_buf, sizeof(s_date_buf), "%02d.%02d.%04d",
+    snprintf(s_date_buf, sizeof(s_date_buf), "%02d.%02d.%02d",
              tick_time->tm_mday,
              tick_time->tm_mon + 1,
-             tick_time->tm_year + 1900);
+             (tick_time->tm_year + 1900) % 100);
     text_layer_set_text(s_date_layer, s_date_buf);
   }
 }
@@ -63,7 +63,7 @@ static void window_load(Window *window) {
   Layer *root = window_get_root_layer(window);
 
   s_font_time = fonts_load_custom_font(
-    resource_get_handle(RESOURCE_ID_FONT_PIXEL_TIME_42));
+    resource_get_handle(RESOURCE_ID_FONT_PIXEL_TIME_32));
 
   s_time_layer = text_layer_create(GRect(0, 30, 144, 50));
   text_layer_set_background_color(s_time_layer, GColorClear);
@@ -73,7 +73,7 @@ static void window_load(Window *window) {
   layer_add_child(root, text_layer_get_layer(s_time_layer));
 
   s_font_date = fonts_load_custom_font(
-    resource_get_handle(RESOURCE_ID_FONT_PIXEL_DATE_18));
+    resource_get_handle(RESOURCE_ID_FONT_PIXEL_DATE_16));
 
   s_date_layer = text_layer_create(GRect(0, 88, 144, 24));
   text_layer_set_background_color(s_date_layer, GColorClear);
@@ -83,7 +83,7 @@ static void window_load(Window *window) {
   layer_add_child(root, text_layer_get_layer(s_date_layer));
 
   s_font_totp = fonts_load_custom_font(
-    resource_get_handle(RESOURCE_ID_FONT_PIXEL_TOTP_24));
+    resource_get_handle(RESOURCE_ID_FONT_PIXEL_TOTP_16));
 
   s_totp_layer = text_layer_create(GRect(0, 118, 144, 30));
   text_layer_set_background_color(s_totp_layer, GColorClear);
