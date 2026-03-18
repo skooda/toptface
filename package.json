@@ -16,7 +16,26 @@
       "watchface": true
     },
     "resources": {
-      "media": []
+      "media": [
+        {
+          "type": "font",
+          "name": "FONT_PIXEL_TIME_42",
+          "file": "fonts/pixel.ttf",
+          "characterRegex": "[0-9:]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_PIXEL_DATE_18",
+          "file": "fonts/pixel.ttf",
+          "characterRegex": "[A-Z]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_PIXEL_TOTP_24",
+          "file": "fonts/pixel.ttf",
+          "characterRegex": "[0-9]"
+        }
+      ]
     }
   },
   "dependencies": {},
