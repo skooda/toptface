@@ -9,6 +9,9 @@ static TextLayer *s_date_layer;
 static GFont s_font_date;
 static char s_date_buf[11]; // "DD.MM.YYYY\0"
 
+static TextLayer *s_totp_layer;
+static GFont s_font_totp;
+
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   strftime(s_time_buf, sizeof(s_time_buf), "%H:%M", tick_time);
   text_layer_set_text(s_time_layer, s_time_buf);
@@ -46,6 +49,17 @@ static void window_load(Window *window) {
   text_layer_set_font(s_date_layer, s_font_date);
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
   layer_add_child(root, text_layer_get_layer(s_date_layer));
+
+  s_font_totp = fonts_load_custom_font(
+    resource_get_handle(RESOURCE_ID_FONT_PIXEL_TOTP_24));
+
+  s_totp_layer = text_layer_create(GRect(0, 118, 144, 30));
+  text_layer_set_background_color(s_totp_layer, GColorClear);
+  text_layer_set_text_color(s_totp_layer, GColorWhite);
+  text_layer_set_font(s_totp_layer, s_font_totp);
+  text_layer_set_text_alignment(s_totp_layer, GTextAlignmentCenter);
+  text_layer_set_text(s_totp_layer, "123-456"); // TOTP placeholder — swap this string for real generator
+  layer_add_child(root, text_layer_get_layer(s_totp_layer));
 }
 
 static void window_unload(Window *window) {
@@ -53,6 +67,8 @@ static void window_unload(Window *window) {
   fonts_unload_custom_font(s_font_time);
   text_layer_destroy(s_date_layer);
   fonts_unload_custom_font(s_font_date);
+  text_layer_destroy(s_totp_layer);
+  fonts_unload_custom_font(s_font_totp);
 }
 
 static void init(void) {
