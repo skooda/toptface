@@ -12,6 +12,10 @@ static char s_date_buf[11]; // "DD.MM.YYYY\0"
 static TextLayer *s_totp_layer;
 static GFont s_font_totp;
 
+static Layer *s_battery_layer;
+static int s_battery_level = 0;
+static char s_batt_buf[5]; // "100%\0"
+
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   strftime(s_time_buf, sizeof(s_time_buf), "%H:%M", tick_time);
   text_layer_set_text(s_time_layer, s_time_buf);
@@ -25,6 +29,34 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
              tick_time->tm_year + 1900);
     text_layer_set_text(s_date_layer, s_date_buf);
   }
+}
+
+static void battery_update_proc(Layer *layer, GContext *ctx) {
+  // Number of filled segments (0-5): round(charge / 20)
+  int filled = (s_battery_level + 10) / 20;
+
+  for (int i = 0; i < 5; i++) {
+    GRect seg = GRect(i * 10, 4, 8, 10);
+    if (i < filled) {
+      graphics_context_set_fill_color(ctx, GColorWhite);
+    } else {
+      graphics_context_set_fill_color(ctx, GColorDarkGray);
+    }
+    graphics_fill_rect(ctx, seg, 0, GCornerNone);
+  }
+
+  // Percentage text: starts 4px after bar (bar ends at x=48)
+  snprintf(s_batt_buf, sizeof(s_batt_buf), "%d%%", s_battery_level);
+  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_draw_text(ctx, s_batt_buf, s_font_date,
+                     GRect(52, 0, 36, 18),
+                     GTextOverflowModeTrailingEllipsis,
+                     GTextAlignmentLeft, NULL);
+}
+
+static void battery_handler(BatteryChargeState state) {
+  s_battery_level = state.charge_percent;
+  layer_mark_dirty(s_battery_layer);
 }
 
 static void window_load(Window *window) {
@@ -60,6 +92,10 @@ static void window_load(Window *window) {
   text_layer_set_text_alignment(s_totp_layer, GTextAlignmentCenter);
   text_layer_set_text(s_totp_layer, "123-456"); // TOTP placeholder — swap this string for real generator
   layer_add_child(root, text_layer_get_layer(s_totp_layer));
+
+  s_battery_layer = layer_create(GRect(56, 148, 88, 18));
+  layer_set_update_proc(s_battery_layer, battery_update_proc);
+  layer_add_child(root, s_battery_layer);
 }
 
 static void window_unload(Window *window) {
@@ -69,6 +105,7 @@ static void window_unload(Window *window) {
   fonts_unload_custom_font(s_font_date);
   text_layer_destroy(s_totp_layer);
   fonts_unload_custom_font(s_font_totp);
+  layer_destroy(s_battery_layer);
 }
 
 static void init(void) {
@@ -86,10 +123,14 @@ static void init(void) {
   time_t now = time(NULL);
   struct tm *t = localtime(&now);
   tick_handler(t, MINUTE_UNIT);
+
+  battery_state_service_subscribe(battery_handler);
+  battery_handler(battery_state_service_peek());
 }
 
 static void deinit(void) {
   tick_timer_service_unsubscribe();
+  battery_state_service_unsubscribe();
   window_destroy(s_window);
 }
 
