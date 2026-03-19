@@ -1,20 +1,157 @@
 #include <pebble.h>
 
-static Window *s_window;
-static TextLayer *s_time_layer;
-static GFont s_font_time;
-static char s_time_buf[6]; // "HH:MM\0"
+extern uint32_t MESSAGE_KEY_KEY_SECRET;
 
-static TextLayer *s_date_layer;
-static GFont s_font_date;
-static char s_date_buf[9]; // "DD.MM.YY\0"
+// ==================== SHA-1 ====================
 
-static TextLayer *s_totp_layer;
-static GFont s_font_totp;
+static uint32_t rot32(uint32_t v, int n) { return (v << n) | (v >> (32 - n)); }
 
-static Layer *s_battery_layer;
-static int s_battery_level = 0;
-static char s_batt_buf[5]; // "100%\0"
+static void sha1_block(uint32_t s[5], const uint8_t b[64]) {
+  uint32_t w[80];
+  for (int i = 0; i < 16; i++)
+    w[i] = ((uint32_t)b[i*4] << 24) | ((uint32_t)b[i*4+1] << 16) |
+            ((uint32_t)b[i*4+2] << 8) | b[i*4+3];
+  for (int i = 16; i < 80; i++)
+    w[i] = rot32(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
+  uint32_t a = s[0], b2 = s[1], c = s[2], d = s[3], e = s[4];
+  for (int i = 0; i < 80; i++) {
+    uint32_t f, k;
+    if      (i < 20) { f = (b2 & c) | (~b2 & d); k = 0x5A827999u; }
+    else if (i < 40) { f = b2 ^ c ^ d;            k = 0x6ED9EBA1u; }
+    else if (i < 60) { f = (b2 & c) | (b2 & d) | (c & d); k = 0x8F1BBCDCu; }
+    else             { f = b2 ^ c ^ d;            k = 0xCA62C1D6u; }
+    uint32_t t = rot32(a, 5) + f + e + k + w[i];
+    e = d; d = c; c = rot32(b2, 30); b2 = a; a = t;
+  }
+  s[0] += a; s[1] += b2; s[2] += c; s[3] += d; s[4] += e;
+}
+
+static void sha1(const uint8_t *data, size_t len, uint8_t out[20]) {
+  uint32_t s[5] = {0x67452301u, 0xEFCDAB89u, 0x98BADCFEu, 0x10325476u, 0xC3D2E1F0u};
+  uint8_t blk[64];
+  size_t i;
+  for (i = 0; i + 64 <= len; i += 64)
+    sha1_block(s, data + i);
+  size_t r = len - i;
+  memcpy(blk, data + i, r);
+  blk[r] = 0x80;
+  memset(blk + r + 1, 0, 63 - r);
+  if (r >= 56) { sha1_block(s, blk); memset(blk, 0, 56); }
+  uint64_t bits = (uint64_t)len * 8;
+  for (int j = 0; j < 8; j++) blk[63 - j] = (uint8_t)(bits >> (j * 8));
+  sha1_block(s, blk);
+  for (int j = 0; j < 5; j++) {
+    out[j*4]   = (uint8_t)(s[j] >> 24);
+    out[j*4+1] = (uint8_t)(s[j] >> 16);
+    out[j*4+2] = (uint8_t)(s[j] >> 8);
+    out[j*4+3] = (uint8_t)(s[j]);
+  }
+}
+
+// ==================== HMAC-SHA1 (8-byte message for TOTP counter) ====================
+
+static void hmac_sha1(const uint8_t *key, size_t klen, const uint8_t msg[8], uint8_t out[20]) {
+  uint8_t k[64];
+  memset(k, 0, 64);
+  if (klen > 64) sha1(key, klen, k);
+  else           memcpy(k, key, klen);
+
+  // inner = SHA1(ipad || msg)
+  uint8_t ipad[72];
+  for (int i = 0; i < 64; i++) ipad[i] = k[i] ^ 0x36;
+  memcpy(ipad + 64, msg, 8);
+  uint8_t inner[20];
+  sha1(ipad, 72, inner);
+
+  // outer = SHA1(opad || inner)
+  uint8_t opad[84];
+  for (int i = 0; i < 64; i++) opad[i] = k[i] ^ 0x5C;
+  memcpy(opad + 64, inner, 20);
+  sha1(opad, 84, out);
+}
+
+// ==================== Base32 decode ====================
+
+static int base32_decode(const char *enc, uint8_t *out, int maxlen) {
+  int bits = 0, acc = 0, n = 0;
+  for (const char *p = enc; *p && *p != '='; p++) {
+    int v;
+    char c = *p;
+    if      (c >= 'A' && c <= 'Z') v = c - 'A';
+    else if (c >= 'a' && c <= 'z') v = c - 'a';
+    else if (c >= '2' && c <= '7') v = c - '2' + 26;
+    else continue;
+    acc = (acc << 5) | v;
+    bits += 5;
+    if (bits >= 8) { bits -= 8; if (n < maxlen) out[n++] = (acc >> bits) & 0xFF; }
+  }
+  return n;
+}
+
+// ==================== TOTP (RFC 6238) ====================
+
+static uint32_t totp_compute(const uint8_t *key, size_t klen, time_t t) {
+  uint64_t ctr = (uint64_t)t / 30;
+  uint8_t msg[8];
+  for (int i = 7; i >= 0; i--) { msg[i] = ctr & 0xFF; ctr >>= 8; }
+  uint8_t digest[20];
+  hmac_sha1(key, klen, msg, digest);
+  int off = digest[19] & 0x0F;
+  uint32_t code = ((uint32_t)(digest[off]   & 0x7F) << 24)
+                | ((uint32_t) digest[off+1]          << 16)
+                | ((uint32_t) digest[off+2]          <<  8)
+                |  (uint32_t) digest[off+3];
+  return code % 1000000u;
+}
+
+// ==================== Watch face state ====================
+
+#define KEY_STORAGE 1  // persist key for secret (distinct from AppMessage KEY_SECRET=0)
+
+static Window      *s_window;
+
+static TextLayer   *s_time_layer;
+static GFont        s_font_time;
+static char         s_time_buf[6];
+
+static TextLayer   *s_date_layer;
+static GFont        s_font_date;
+static char         s_date_buf[9];
+
+static TextLayer   *s_totp_layer;
+static GFont        s_font_totp;
+static char         s_totp_buf[8];   // "XXX-XXX\0"
+static uint32_t     s_last_code = UINT32_MAX;
+
+static Layer       *s_battery_layer;
+static int          s_battery_level = 0;
+static char         s_batt_buf[5];
+
+static char         s_secret[65];  // base32 secret, persisted
+
+// ==================== TOTP display ====================
+
+static void update_totp(void) {
+  if (s_secret[0] == '\0') {
+    text_layer_set_text(s_totp_layer, "------");
+    return;
+  }
+  uint8_t key[40];
+  int klen = base32_decode(s_secret, key, 40);
+  if (klen == 0) {
+    text_layer_set_text(s_totp_layer, "------");
+    return;
+  }
+  uint32_t code = totp_compute(key, (size_t)klen, time(NULL));
+  if (code != s_last_code) {
+    s_last_code = code;
+    snprintf(s_totp_buf, sizeof(s_totp_buf), "%03u-%03u",
+             (unsigned)(code / 1000), (unsigned)(code % 1000));
+    text_layer_set_text(s_totp_layer, s_totp_buf);
+  }
+}
+
+// ==================== Tick handler ====================
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   strftime(s_time_buf, sizeof(s_time_buf), "%H:%M", tick_time);
@@ -29,23 +166,19 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
              (tick_time->tm_year + 1900) % 100);
     text_layer_set_text(s_date_layer, s_date_buf);
   }
+
+  update_totp();
 }
 
-static void battery_update_proc(Layer *layer, GContext *ctx) {
-  // Number of filled segments (0-5): round(charge / 20)
-  int filled = (s_battery_level + 10) / 20;
+// ==================== Battery ====================
 
+static void battery_update_proc(Layer *layer, GContext *ctx) {
+  int filled = (s_battery_level + 10) / 20;
   for (int i = 0; i < 5; i++) {
     GRect seg = GRect(i * 10, 4, 8, 10);
-    if (i < filled) {
-      graphics_context_set_fill_color(ctx, GColorWhite);
-    } else {
-      graphics_context_set_fill_color(ctx, GColorDarkGray);
-    }
+    graphics_context_set_fill_color(ctx, i < filled ? GColorWhite : GColorDarkGray);
     graphics_fill_rect(ctx, seg, 0, GCornerNone);
   }
-
-  // Percentage text: starts 4px after bar (bar ends at x=48)
   snprintf(s_batt_buf, sizeof(s_batt_buf), "%d%%", s_battery_level);
   graphics_context_set_text_color(ctx, GColorWhite);
   graphics_draw_text(ctx, s_batt_buf, s_font_date,
@@ -58,6 +191,28 @@ static void battery_handler(BatteryChargeState state) {
   s_battery_level = state.charge_percent;
   layer_mark_dirty(s_battery_layer);
 }
+
+// ==================== AppMessage ====================
+
+static void inbox_received(DictionaryIterator *iter, void *ctx) {
+  APP_LOG(APP_LOG_LEVEL_INFO, "inbox_received");
+  Tuple *t = dict_find(iter, MESSAGE_KEY_KEY_SECRET);
+  if (t) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "KEY_SECRET found type=%d len=%d", t->type, (int)t->length);
+  } else {
+    APP_LOG(APP_LOG_LEVEL_WARNING, "KEY_SECRET not found in message");
+  }
+  if (t && t->type == TUPLE_CSTRING && t->length > 1) {
+    strncpy(s_secret, t->value->cstring, 64);
+    s_secret[64] = '\0';
+    persist_write_string(KEY_STORAGE, s_secret);
+    s_last_code = UINT32_MAX;
+    APP_LOG(APP_LOG_LEVEL_INFO, "secret stored, len=%d", (int)strlen(s_secret));
+    update_totp();
+  }
+}
+
+// ==================== Window ====================
 
 static void window_load(Window *window) {
   Layer *root = window_get_root_layer(window);
@@ -90,7 +245,7 @@ static void window_load(Window *window) {
   text_layer_set_text_color(s_totp_layer, GColorWhite);
   text_layer_set_font(s_totp_layer, s_font_totp);
   text_layer_set_text_alignment(s_totp_layer, GTextAlignmentCenter);
-  text_layer_set_text(s_totp_layer, "123-456"); // TOTP placeholder — swap this string for real generator
+  text_layer_set_text(s_totp_layer, "------");
   layer_add_child(root, text_layer_get_layer(s_totp_layer));
 
   s_battery_layer = layer_create(GRect(56, 148, 88, 18));
@@ -108,7 +263,14 @@ static void window_unload(Window *window) {
   layer_destroy(s_battery_layer);
 }
 
+// ==================== Init / deinit ====================
+
 static void init(void) {
+  // Load persisted secret
+  memset(s_secret, 0, sizeof(s_secret));
+  if (persist_exists(KEY_STORAGE))
+    persist_read_string(KEY_STORAGE, s_secret, sizeof(s_secret));
+
   s_window = window_create();
   window_set_background_color(s_window, GColorBlack);
   window_set_window_handlers(s_window, (WindowHandlers) {
@@ -117,20 +279,25 @@ static void init(void) {
   });
   window_stack_push(s_window, true);
 
-  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+  tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
 
-  // Force initial update so time shows immediately on load
   time_t now = time(NULL);
   struct tm *t = localtime(&now);
-  tick_handler(t, MINUTE_UNIT);
+  tick_handler(t, SECOND_UNIT);
 
   battery_state_service_subscribe(battery_handler);
   battery_handler(battery_state_service_peek());
+
+  APP_LOG(APP_LOG_LEVEL_INFO, "init: secret_exists=%d", (int)persist_exists(KEY_STORAGE));
+  app_message_register_inbox_received(inbox_received);
+  app_message_open(128, 8);
+  APP_LOG(APP_LOG_LEVEL_INFO, "app_message open OK");
 }
 
 static void deinit(void) {
   tick_timer_service_unsubscribe();
   battery_state_service_unsubscribe();
+  app_message_deregister_callbacks();
   window_destroy(s_window);
 }
 

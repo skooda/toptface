@@ -15,6 +15,11 @@
     "watchapp": {
       "watchface": true
     },
+    "enableMultiJS": true,
+    "capabilities": ["configurable"],
+    "messageKeys": [
+      "KEY_SECRET"
+    ],
     "resources": {
       "media": [
         {
