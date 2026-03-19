@@ -195,19 +195,12 @@ static void battery_handler(BatteryChargeState state) {
 // ==================== AppMessage ====================
 
 static void inbox_received(DictionaryIterator *iter, void *ctx) {
-  APP_LOG(APP_LOG_LEVEL_INFO, "inbox_received");
   Tuple *t = dict_find(iter, MESSAGE_KEY_KEY_SECRET);
-  if (t) {
-    APP_LOG(APP_LOG_LEVEL_INFO, "KEY_SECRET found type=%d len=%d", t->type, (int)t->length);
-  } else {
-    APP_LOG(APP_LOG_LEVEL_WARNING, "KEY_SECRET not found in message");
-  }
   if (t && t->type == TUPLE_CSTRING && t->length > 1) {
     strncpy(s_secret, t->value->cstring, 64);
     s_secret[64] = '\0';
     persist_write_string(KEY_STORAGE, s_secret);
     s_last_code = UINT32_MAX;
-    APP_LOG(APP_LOG_LEVEL_INFO, "secret stored, len=%d", (int)strlen(s_secret));
     update_totp();
   }
 }
@@ -288,10 +281,8 @@ static void init(void) {
   battery_state_service_subscribe(battery_handler);
   battery_handler(battery_state_service_peek());
 
-  APP_LOG(APP_LOG_LEVEL_INFO, "init: secret_exists=%d", (int)persist_exists(KEY_STORAGE));
   app_message_register_inbox_received(inbox_received);
   app_message_open(128, 8);
-  APP_LOG(APP_LOG_LEVEL_INFO, "app_message open OK");
 }
 
 static void deinit(void) {
