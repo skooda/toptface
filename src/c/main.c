@@ -123,10 +123,6 @@ static GFont        s_font_totp;
 static char         s_totp_buf[8];   // "XXX-XXX\0"
 static uint32_t     s_last_code = UINT32_MAX;
 
-static Layer       *s_battery_layer;
-static int          s_battery_level = 0;
-static char         s_batt_buf[5];
-
 static char         s_secret[65];  // base32 secret, persisted
 
 // ==================== TOTP display ====================
@@ -168,28 +164,6 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   }
 
   update_totp();
-}
-
-// ==================== Battery ====================
-
-static void battery_update_proc(Layer *layer, GContext *ctx) {
-  int filled = (s_battery_level + 10) / 20;
-  for (int i = 0; i < 5; i++) {
-    GRect seg = GRect(i * 10, 4, 8, 10);
-    graphics_context_set_fill_color(ctx, i < filled ? GColorWhite : GColorDarkGray);
-    graphics_fill_rect(ctx, seg, 0, GCornerNone);
-  }
-  snprintf(s_batt_buf, sizeof(s_batt_buf), "%d%%", s_battery_level);
-  graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, s_batt_buf, s_font_date,
-                     GRect(52, 0, 36, 18),
-                     GTextOverflowModeTrailingEllipsis,
-                     GTextAlignmentLeft, NULL);
-}
-
-static void battery_handler(BatteryChargeState state) {
-  s_battery_level = state.charge_percent;
-  layer_mark_dirty(s_battery_layer);
 }
 
 // ==================== AppMessage ====================
@@ -241,9 +215,6 @@ static void window_load(Window *window) {
   text_layer_set_text(s_totp_layer, "------");
   layer_add_child(root, text_layer_get_layer(s_totp_layer));
 
-  s_battery_layer = layer_create(GRect(56, 148, 88, 18));
-  layer_set_update_proc(s_battery_layer, battery_update_proc);
-  layer_add_child(root, s_battery_layer);
 }
 
 static void window_unload(Window *window) {
@@ -253,7 +224,6 @@ static void window_unload(Window *window) {
   fonts_unload_custom_font(s_font_date);
   text_layer_destroy(s_totp_layer);
   fonts_unload_custom_font(s_font_totp);
-  layer_destroy(s_battery_layer);
 }
 
 // ==================== Init / deinit ====================
@@ -278,16 +248,12 @@ static void init(void) {
   struct tm *t = localtime(&now);
   tick_handler(t, SECOND_UNIT);
 
-  battery_state_service_subscribe(battery_handler);
-  battery_handler(battery_state_service_peek());
-
   app_message_register_inbox_received(inbox_received);
   app_message_open(128, 8);
 }
 
 static void deinit(void) {
   tick_timer_service_unsubscribe();
-  battery_state_service_unsubscribe();
   app_message_deregister_callbacks();
   window_destroy(s_window);
 }

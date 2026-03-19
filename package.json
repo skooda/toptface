@@ -32,7 +32,7 @@
           "type": "font",
           "name": "FONT_PIXEL_DATE_8",
           "file": "fonts/pixel.ttf",
-          "characterRegex": "[0-9.%]"
+          "characterRegex": "[0-9.]"
         },
         {
           "type": "font",
