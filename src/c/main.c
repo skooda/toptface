@@ -187,7 +187,7 @@ static void window_load(Window *window) {
   s_font_time = fonts_load_custom_font(
     resource_get_handle(RESOURCE_ID_FONT_PIXEL_TIME_24));
 
-  s_time_layer = text_layer_create(GRect(0, 30, 144, 50));
+  s_time_layer = text_layer_create(GRect(0, 25, 144, 50));
   text_layer_set_background_color(s_time_layer, GColorClear);
   text_layer_set_text_color(s_time_layer, GColorWhite);
   text_layer_set_font(s_time_layer, s_font_time);
@@ -197,7 +197,7 @@ static void window_load(Window *window) {
   s_font_date = fonts_load_custom_font(
     resource_get_handle(RESOURCE_ID_FONT_PIXEL_DATE_8));
 
-  s_date_layer = text_layer_create(GRect(0, 88, 144, 24));
+  s_date_layer = text_layer_create(GRect(0, 83, 144, 24));
   text_layer_set_background_color(s_date_layer, GColorClear);
   text_layer_set_text_color(s_date_layer, GColorWhite);
   text_layer_set_font(s_date_layer, s_font_date);
@@ -207,7 +207,7 @@ static void window_load(Window *window) {
   s_font_totp = fonts_load_custom_font(
     resource_get_handle(RESOURCE_ID_FONT_PIXEL_TOTP_8));
 
-  s_totp_layer = text_layer_create(GRect(0, 118, 144, 30));
+  s_totp_layer = text_layer_create(GRect(0, 113, 144, 30));
   text_layer_set_background_color(s_totp_layer, GColorClear);
   text_layer_set_text_color(s_totp_layer, GColorWhite);
   text_layer_set_font(s_totp_layer, s_font_totp);
