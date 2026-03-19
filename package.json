@@ -24,7 +24,7 @@
       "media": [
         {
           "type": "font",
-          "name": "FONT_PIXEL_TIME_24",
+          "name": "FONT_PIXEL_TIME_25",
           "file": "fonts/pixel.ttf",
           "characterRegex": "[0-9: ]"
         },
