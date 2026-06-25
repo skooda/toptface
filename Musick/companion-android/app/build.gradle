@@ -29,8 +29,16 @@ android {
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
 
-    // PebbleKit Android. The original jcenter artifact (com.getpebble:pebblekit)
-    // is gone; this pulls the source from GitHub via JitPack. If Core Devices
-    // publishes an official PebbleKit artifact, switch to that coordinate.
-    implementation 'com.github.pebble:pebblekit-android:v4.0.1'
+    // PebbleKit Android, from Maven Central.
+    implementation 'com.getpebble:pebblekit:4.0.1'
+}
+
+// PebbleKit drags in the legacy split kotlin-stdlib-jdk7/jdk8 (1.6.21), which
+// clashes with the merged kotlin-stdlib (1.8+) from appcompat. Align them.
+configurations.all {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+    }
 }
