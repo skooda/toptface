@@ -20,7 +20,8 @@
     "messageKeys": [
       "KEY_TITLE",
       "KEY_ARTIST",
-      "KEY_COMMAND"
+      "KEY_COMMAND",
+      "KEY_STATE"
     ],
     "resources": {
       "media": []

@@ -9,7 +9,7 @@ and is a self-contained Pebble project (its own `package.json`, `wscript`,
 | Folder       | Type      | Description                                            |
 |--------------|-----------|--------------------------------------------------------|
 | `Totpface/`  | Watchface | TOTP (RFC 6238) authenticator watchface with time/date |
-| `Musick/`    | Watchapp  | Music player remote — play/pause, next, previous        |
+| `Musick/`    | Watchapp  | Music remote, like the built-in app but button hints on the left |
 
 ## Building
 
