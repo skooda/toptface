@@ -1,5 +1,5 @@
 build/
-.lock-waf_darwin_build
+.lock-waf_*_build
 *.pbw
 
 # Android companion (Gradle)
