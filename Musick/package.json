@@ -1,0 +1,31 @@
+{
+  "name": "musick",
+  "author": "Pavel Skoda",
+  "version": "1.0.0",
+  "keywords": ["pebble-app"],
+  "sdk": {
+    "version": "^4.9"
+  },
+  "pebble": {
+    "displayName": "Musick",
+    "uuid": "3e58ab85-63f9-41f7-aea5-a4827c328c5a",
+    "sdkVersion": "3",
+    "projectType": "native",
+    "targetPlatforms": ["diorite"],
+    "watchapp": {
+      "watchface": false
+    },
+    "enableMultiJS": true,
+    "capabilities": [],
+    "messageKeys": [
+      "KEY_TITLE",
+      "KEY_ARTIST",
+      "KEY_COMMAND"
+    ],
+    "resources": {
+      "media": []
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
