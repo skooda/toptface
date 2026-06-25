@@ -1,11 +1,14 @@
 #include <pebble.h>
 
-extern uint32_t MESSAGE_KEY_KEY_TITLE;
-extern uint32_t MESSAGE_KEY_KEY_ARTIST;
-extern uint32_t MESSAGE_KEY_KEY_COMMAND;
-extern uint32_t MESSAGE_KEY_KEY_STATE;
+// AppMessage keys. These are explicit integers (not auto-assigned messageKeys)
+// so the Android companion can use the exact same key IDs — keep both sides in
+// sync. See companion-android/.../PebbleConstants.java.
+#define MSG_KEY_TITLE    0
+#define MSG_KEY_ARTIST   1
+#define MSG_KEY_COMMAND  2
+#define MSG_KEY_STATE    3
 
-// Commands sent to the phone (KEY_COMMAND values).
+// Commands sent to the Android companion (KEY_COMMAND values).
 typedef enum {
   CMD_PLAY_PAUSE  = 0,
   CMD_NEXT        = 1,
@@ -14,13 +17,12 @@ typedef enum {
   CMD_VOLUME_DOWN = 4,
 } MusicCommand;
 
-// Vertical centers of the three physical buttons, used to line the on-screen
-// button hints up with them. Hints sit on the LEFT edge (the built-in Music
-// app draws them on the right, against the buttons).
-#define HINT_COL_W   30
-#define Y_PREV       34
-#define Y_PLAY       84
-#define Y_NEXT      134
+// The button hints sit on the LEFT edge (the built-in Music app draws them on
+// the right, against the physical buttons). Their vertical positions track the
+// real button centers as a fraction of screen height, so the layout works on
+// any platform (built for emery / Pebble Time 2).
+#define HINT_COL_W   34
+#define ICON_HALF_H   9   // half-height of the icon glyphs
 
 // ==================== State ====================
 
@@ -38,39 +40,43 @@ static char       s_title_buf[64];
 static TextLayer *s_artist_layer;
 static char       s_artist_buf[64];
 
-static const GPathInfo PREV_TRI_INFO = { 3, (GPoint[]){ {12, -7}, {12, 7}, {0, 0} } };
-static const GPathInfo PLAY_TRI_INFO = { 3, (GPoint[]){ {0, -8}, {0, 8}, {14, 0} } };
-static const GPathInfo NEXT_TRI_INFO = { 3, (GPoint[]){ {0, -7}, {0, 7}, {12, 0} } };
+static const GPathInfo PREV_TRI_INFO = { 3, (GPoint[]){ {14, -9}, {14, 9}, {0, 0} } };
+static const GPathInfo PLAY_TRI_INFO = { 3, (GPoint[]){ {0, -10}, {0, 10}, {17, 0} } };
+static const GPathInfo NEXT_TRI_INFO = { 3, (GPoint[]){ {0, -9}, {0, 9}, {14, 0} } };
 
 // ==================== Hint column drawing ====================
 
 static void hint_layer_update(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+  int y_prev = bounds.size.h * 22 / 100;
+  int y_play = bounds.size.h / 2;
+  int y_next = bounds.size.h * 78 / 100;
+
   graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_context_set_stroke_color(ctx, GColorWhite);
 
   // PREV (skip back): bar + left-pointing triangle.
-  graphics_fill_rect(ctx, GRect(5, Y_PREV - 7, 3, 14), 0, GCornerNone);
-  gpath_move_to(s_prev_tri, GPoint(9, Y_PREV));
+  graphics_fill_rect(ctx, GRect(5, y_prev - ICON_HALF_H, 3, ICON_HALF_H * 2), 0, GCornerNone);
+  gpath_move_to(s_prev_tri, GPoint(10, y_prev));
   gpath_draw_filled(ctx, s_prev_tri);
 
   // PLAY / PAUSE: two bars when playing, a triangle when paused.
   if (s_playing) {
-    graphics_fill_rect(ctx, GRect(7, Y_PLAY - 8, 4, 16), 0, GCornerNone);
-    graphics_fill_rect(ctx, GRect(15, Y_PLAY - 8, 4, 16), 0, GCornerNone);
+    graphics_fill_rect(ctx, GRect(8, y_play - 10, 5, 20), 0, GCornerNone);
+    graphics_fill_rect(ctx, GRect(18, y_play - 10, 5, 20), 0, GCornerNone);
   } else {
-    gpath_move_to(s_play_tri, GPoint(8, Y_PLAY));
+    gpath_move_to(s_play_tri, GPoint(9, y_play));
     gpath_draw_filled(ctx, s_play_tri);
   }
 
   // NEXT (skip forward): right-pointing triangle + bar.
-  gpath_move_to(s_next_tri, GPoint(7, Y_NEXT));
+  gpath_move_to(s_next_tri, GPoint(8, y_next));
   gpath_draw_filled(ctx, s_next_tri);
-  graphics_fill_rect(ctx, GRect(20, Y_NEXT - 7, 3, 14), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(24, y_next - ICON_HALF_H, 3, ICON_HALF_H * 2), 0, GCornerNone);
 
   // Separator between the hint column and the now-playing text.
-  GRect bounds = layer_get_bounds(layer);
-  graphics_draw_line(ctx, GPoint(bounds.size.w - 1, 8),
-                          GPoint(bounds.size.w - 1, bounds.size.h - 8));
+  graphics_context_set_stroke_color(ctx, GColorDarkGray);
+  graphics_draw_line(ctx, GPoint(bounds.size.w - 1, 10),
+                          GPoint(bounds.size.w - 1, bounds.size.h - 10));
 }
 
 // ==================== AppMessage ====================
@@ -80,26 +86,26 @@ static void send_command(MusicCommand cmd) {
   if (app_message_outbox_begin(&iter) != APP_MSG_OK) {
     return;
   }
-  dict_write_uint8(iter, MESSAGE_KEY_KEY_COMMAND, (uint8_t)cmd);
+  dict_write_uint8(iter, MSG_KEY_COMMAND, (uint8_t)cmd);
   app_message_outbox_send();
 }
 
 static void inbox_received(DictionaryIterator *iter, void *ctx) {
-  Tuple *title = dict_find(iter, MESSAGE_KEY_KEY_TITLE);
+  Tuple *title = dict_find(iter, MSG_KEY_TITLE);
   if (title && title->type == TUPLE_CSTRING) {
     strncpy(s_title_buf, title->value->cstring, sizeof(s_title_buf) - 1);
     s_title_buf[sizeof(s_title_buf) - 1] = '\0';
     text_layer_set_text(s_title_layer, s_title_buf);
   }
 
-  Tuple *artist = dict_find(iter, MESSAGE_KEY_KEY_ARTIST);
+  Tuple *artist = dict_find(iter, MSG_KEY_ARTIST);
   if (artist && artist->type == TUPLE_CSTRING) {
     strncpy(s_artist_buf, artist->value->cstring, sizeof(s_artist_buf) - 1);
     s_artist_buf[sizeof(s_artist_buf) - 1] = '\0';
     text_layer_set_text(s_artist_layer, s_artist_buf);
   }
 
-  Tuple *state = dict_find(iter, MESSAGE_KEY_KEY_STATE);
+  Tuple *state = dict_find(iter, MSG_KEY_STATE);
   if (state && state->type == TUPLE_INT) {
     s_playing = state->value->int32 != 0;
     layer_mark_dirty(s_hint_layer);
@@ -109,7 +115,7 @@ static void inbox_received(DictionaryIterator *iter, void *ctx) {
 // ==================== Buttons ====================
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *ctx) {
-  s_playing = !s_playing;            // optimistic; phone confirms via KEY_STATE
+  s_playing = !s_playing;            // optimistic; companion confirms via KEY_STATE
   layer_mark_dirty(s_hint_layer);
   send_command(CMD_PLAY_PAUSE);
 }
@@ -148,22 +154,24 @@ static void window_load(Window *window) {
   layer_set_update_proc(s_hint_layer, hint_layer_update);
   layer_add_child(root, s_hint_layer);
 
-  int content_x = HINT_COL_W + 2;
-  int content_w = bounds.size.w - content_x - 2;
+  int content_x = HINT_COL_W + 4;
+  int content_w = bounds.size.w - content_x - 4;
 
-  s_title_layer = text_layer_create(GRect(content_x, 50, content_w, 66));
+  int title_h = 88;
+  int title_y = (bounds.size.h - title_h) / 2 - 12;
+  s_title_layer = text_layer_create(GRect(content_x, title_y, content_w, title_h));
   text_layer_set_background_color(s_title_layer, GColorClear);
   text_layer_set_text_color(s_title_layer, GColorWhite);
-  text_layer_set_font(s_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  text_layer_set_font(s_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
   text_layer_set_text_alignment(s_title_layer, GTextAlignmentCenter);
   text_layer_set_overflow_mode(s_title_layer, GTextOverflowModeTrailingEllipsis);
   text_layer_set_text(s_title_layer, "Musick");
   layer_add_child(root, text_layer_get_layer(s_title_layer));
 
-  s_artist_layer = text_layer_create(GRect(content_x, 116, content_w, 30));
+  s_artist_layer = text_layer_create(GRect(content_x, title_y + title_h, content_w, 32));
   text_layer_set_background_color(s_artist_layer, GColorClear);
-  text_layer_set_text_color(s_artist_layer, GColorWhite);
-  text_layer_set_font(s_artist_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  text_layer_set_text_color(s_artist_layer, GColorLightGray);
+  text_layer_set_font(s_artist_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24));
   text_layer_set_text_alignment(s_artist_layer, GTextAlignmentCenter);
   text_layer_set_overflow_mode(s_artist_layer, GTextOverflowModeTrailingEllipsis);
   text_layer_set_text(s_artist_layer, "Not playing");
@@ -196,7 +204,7 @@ static void init(void) {
   window_stack_push(s_window, true);
 
   app_message_register_inbox_received(inbox_received);
-  app_message_open(128, 128);
+  app_message_open(256, 64);
 }
 
 static void deinit(void) {

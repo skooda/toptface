@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Musick Companion</string>
+    <string name="instructions">Grant notification access so Musick can read the track currently playing on your phone and control it from your Pebble.</string>
+    <string name="grant_button">Grant notification access</string>
+</resources>

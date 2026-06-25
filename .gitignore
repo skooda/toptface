@@ -1,3 +1,9 @@
 build/
 .lock-waf_darwin_build
 *.pbw
+
+# Android companion (Gradle)
+.gradle/
+local.properties
+*.apk
+

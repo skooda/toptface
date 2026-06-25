@@ -11,18 +11,12 @@
     "uuid": "3e58ab85-63f9-41f7-aea5-a4827c328c5a",
     "sdkVersion": "3",
     "projectType": "native",
-    "targetPlatforms": ["diorite"],
+    "targetPlatforms": ["emery"],
     "watchapp": {
       "watchface": false
     },
     "enableMultiJS": true,
     "capabilities": [],
-    "messageKeys": [
-      "KEY_TITLE",
-      "KEY_ARTIST",
-      "KEY_COMMAND",
-      "KEY_STATE"
-    ],
     "resources": {
       "media": []
     }

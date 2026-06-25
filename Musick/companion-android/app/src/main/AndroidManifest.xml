@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Android 11+ package visibility: we broadcast to the Pebble mobile app.
+         Add the package id of whichever Pebble app you run (official / Core). -->
+    <queries>
+        <package android:name="com.getpebble.android.basalt" />
+        <package android:name="com.getpebble.android" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AppCompat.DayNight">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Reads the phone's active MediaSession. Requires the user to grant
+             "Notification access" (opened from MainActivity). -->
+        <service
+            android:name=".MusickMediaService"
+            android:label="@string/app_name"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
