@@ -1,8 +1,11 @@
 # Musick — Android companion
 
 Bridges the phone's music player to the Musick watchapp using
-[PebbleKit Android](https://github.com/pebble/pebblekit-android). It reads the
-phone's active `MediaSession` (via a `NotificationListenerService`) and:
+[PebbleKit Android](https://github.com/pebble/pebblekit-android). It runs as a
+**foreground service** (`MusickService`) so Android's Doze / battery
+optimisation can't kill it in the background — that's restarted on boot and
+whenever the notification listener rebinds. It reads the phone's active
+`MediaSession` (authorised by the `NotificationListenerService`) and:
 
 - pushes the current **title**, **artist** and **play/pause state** to the watch;
 - applies playback commands the watch sends — play/pause, next, previous, and
@@ -28,8 +31,9 @@ Commands (`KEY_COMMAND`): `0` play/pause, `1` next, `2` previous,
 1. Open `companion-android/` in Android Studio (or run `gradle wrapper` once to
    generate `gradlew`, then `./gradlew assembleDebug`).
 2. Install the APK on the phone paired with your Pebble.
-3. Launch it and tap **Grant notification access** — this is required for the
-   service to read media sessions.
+3. Launch it and tap **Grant notification access** — required to read media
+   sessions — and **Disable battery optimisation** so the bridge isn't killed
+   in the background. On Android 13+ also allow the notification prompt.
 4. Start playing music and open Musick on the watch.
 
 ## Notes / caveats
