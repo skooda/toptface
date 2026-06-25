@@ -1,14 +1,24 @@
 package eu.drmax.musick.companion;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.Service;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
-import android.service.notification.NotificationListenerService;
+import android.os.Build;
+import android.os.IBinder;
 import android.util.Log;
+
+import androidx.annotation.Nullable;
+import androidx.core.app.NotificationCompat;
 
 import com.getpebble.android.kit.PebbleKit;
 import com.getpebble.android.kit.util.PebbleDictionary;
@@ -16,18 +26,23 @@ import com.getpebble.android.kit.util.PebbleDictionary;
 import java.util.List;
 
 /**
- * The companion's workhorse. As a NotificationListenerService it is allowed to
- * read the phone's active {@link MediaSession}s, so it can:
- *   - forward the current track + playback state to the watch, and
- *   - apply playback commands the watch sends back.
+ * Long-lived foreground service that bridges the phone's media player and the
+ * Musick watchapp. Running in the foreground (with an ongoing notification)
+ * keeps the process — and therefore the PebbleKit command receiver — alive
+ * through Doze / battery optimisation, which is what previously caused the
+ * bridge to "stop working" after a while.
  *
- * It is long-lived (the system keeps notification listeners bound), which makes
- * it a good home for the Pebble data receiver too.
+ * It reads the active {@link MediaSession} (authorised by the notification
+ * access granted to {@link MusickNotificationListener}) and:
+ *   - forwards title / artist / play state to the watch;
+ *   - applies playback commands the watch sends back.
  */
-public class MusickMediaService extends NotificationListenerService
+public class MusickService extends Service
         implements MediaSessionManager.OnActiveSessionsChangedListener {
 
-    private static final String TAG = "MusickMedia";
+    private static final String TAG = "MusickService";
+    private static final String CHANNEL_ID = "musick_bridge";
+    private static final int NOTIF_ID = 1;
 
     private MediaSessionManager sessionManager;
     private MediaController controller;
@@ -39,34 +54,48 @@ public class MusickMediaService extends NotificationListenerService
         @Override public void onSessionDestroyed() { setController(null); }
     };
 
-    @Override
-    public void onListenerConnected() {
-        sessionManager = (MediaSessionManager) getSystemService(Context.MEDIA_SESSION_SERVICE);
-        ComponentName self = new ComponentName(this, MusickMediaService.class);
-        try {
-            sessionManager.addOnActiveSessionsChangedListener(this, self);
-            onActiveSessionsChanged(sessionManager.getActiveSessions(self));
-        } catch (SecurityException e) {
-            Log.w(TAG, "Notification access not granted yet", e);
+    /** Start (or restart) the bridge as a foreground service. */
+    public static void start(Context ctx) {
+        Intent i = new Intent(ctx, MusickService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ctx.startForegroundService(i);
+        } else {
+            ctx.startService(i);
         }
-        registerPebbleReceiver();
     }
 
     @Override
-    public void onListenerDisconnected() {
-        if (sessionManager != null) {
-            sessionManager.removeOnActiveSessionsChangedListener(this);
+    public void onCreate() {
+        super.onCreate();
+        goForeground();
+        registerPebbleReceiver();
+        connectSessions();
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        // Re-attach in case we were restarted after being killed.
+        connectSessions();
+        return START_STICKY;
+    }
+
+    // ==================== Media sessions ====================
+
+    private void connectSessions() {
+        if (sessionManager == null) {
+            sessionManager = (MediaSessionManager) getSystemService(Context.MEDIA_SESSION_SERVICE);
         }
-        setController(null);
-        if (dataReceiver != null) {
-            try { unregisterReceiver(dataReceiver); } catch (IllegalArgumentException ignored) {}
-            dataReceiver = null;
+        ComponentName nls = new ComponentName(this, MusickNotificationListener.class);
+        try {
+            sessionManager.addOnActiveSessionsChangedListener(this, nls);
+            onActiveSessionsChanged(sessionManager.getActiveSessions(nls));
+        } catch (SecurityException e) {
+            Log.w(TAG, "Notification access not granted yet", e);
         }
     }
 
     @Override
     public void onActiveSessionsChanged(List<MediaController> controllers) {
-        // The first session is the most recently active one.
         setController(controllers != null && !controllers.isEmpty() ? controllers.get(0) : null);
     }
 
@@ -107,6 +136,8 @@ public class MusickMediaService extends NotificationListenerService
         dict.addUint8(PebbleConstants.KEY_STATE, (byte) (isPlaying() ? 1 : 0));
         PebbleKit.sendDataToPebble(getApplicationContext(), PebbleConstants.APP_UUID, dict);
     }
+
+    // ==================== Watch commands ====================
 
     private void registerPebbleReceiver() {
         dataReceiver = new PebbleKit.PebbleDataReceiver(PebbleConstants.APP_UUID) {
@@ -157,5 +188,50 @@ public class MusickMediaService extends NotificationListenerService
         if (am != null) {
             am.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI);
         }
+    }
+
+    // ==================== Foreground notification ====================
+
+    private void goForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            NotificationChannel ch = new NotificationChannel(
+                    CHANNEL_ID, "Musick bridge", NotificationManager.IMPORTANCE_LOW);
+            ch.setShowBadge(false);
+            nm.createNotificationChannel(ch);
+        }
+
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Musick")
+                .setContentText("Controlling music from your Pebble")
+                .setSmallIcon(android.R.drawable.stat_notify_sync)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        } else {
+            startForeground(NOTIF_ID, notification);
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        if (sessionManager != null) {
+            sessionManager.removeOnActiveSessionsChangedListener(this);
+        }
+        setController(null);
+        if (dataReceiver != null) {
+            try { unregisterReceiver(dataReceiver); } catch (IllegalArgumentException ignored) {}
+            dataReceiver = null;
+        }
+        super.onDestroy();
+    }
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
     }
 }

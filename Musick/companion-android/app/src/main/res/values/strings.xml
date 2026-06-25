@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Musick Companion</string>
-    <string name="instructions">Grant notification access so Musick can read the track currently playing on your phone and control it from your Pebble.</string>
+    <string name="instructions">For the bridge to keep working, grant notification access (to read what is playing) and exempt Musick from battery optimisation (so Android does not kill it in the background).</string>
     <string name="grant_button">Grant notification access</string>
+    <string name="battery_button">Disable battery optimisation</string>
 </resources>
