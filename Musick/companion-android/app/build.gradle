@@ -9,9 +9,12 @@ android {
     defaultConfig {
         applicationId 'eu.drmax.musick.companion'
         minSdk 21
-        targetSdk 34
-        versionCode 2
-        versionName '1.1'
+        // Stay on targetSdk 33: the bundled PebbleKit 4.0.1 registers its
+        // BroadcastReceiver without the RECEIVER_EXPORTED/NOT_EXPORTED flag,
+        // which crashes under the targetSdk 34+ rule on Android 14+ devices.
+        targetSdk 33
+        versionCode 3
+        versionName '1.2'
     }
 
     buildTypes {

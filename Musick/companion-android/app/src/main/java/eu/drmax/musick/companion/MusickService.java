@@ -57,10 +57,16 @@ public class MusickService extends Service
     /** Start (or restart) the bridge as a foreground service. */
     public static void start(Context ctx) {
         Intent i = new Intent(ctx, MusickService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ctx.startForegroundService(i);
-        } else {
-            ctx.startService(i);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(i);
+            } else {
+                ctx.startService(i);
+            }
+        } catch (RuntimeException e) {
+            // e.g. a background-start restriction before the battery exemption
+            // is granted — don't crash the listener/boot path over it.
+            Log.w(TAG, "Could not start bridge service", e);
         }
     }
 
@@ -209,10 +215,15 @@ public class MusickService extends Service
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        } else {
-            startForeground(NOTIF_ID, notification);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            } else {
+                startForeground(NOTIF_ID, notification);
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "startForeground failed; stopping", e);
+            stopSelf();
         }
     }
 
